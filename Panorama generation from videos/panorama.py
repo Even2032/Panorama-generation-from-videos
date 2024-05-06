@@ -7,7 +7,7 @@ import threading
 import time
 import numpy as np
 
-# 获取当前时间戳
+# Get current timestamp
 timestamp = int(time.time())
 
 
@@ -15,7 +15,7 @@ class VideoProcessor:
     def __init__(self, video_path):
         self.video_path = video_path
 
-    
+    #remove the black edges for original panorama
     def remove_black_edges(self, image):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         _, binary = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
@@ -25,7 +25,7 @@ class VideoProcessor:
         
         image[eroded == 0] = (0, 0, 0)
         return image
-    
+    #Video frames read by the stitcher
     def stitch_frames(self, frames):
         if not frames:
             raise Exception("No frames are available for stitching")
@@ -36,7 +36,7 @@ class VideoProcessor:
 
         stitched = self.remove_black_edges(stitched)
         return stitched
-
+    #Selection of algorithms used for feature matching
     def detect_and_match(self, frame1, frame2):
         algo = self.algo_var.get()  
 
@@ -46,9 +46,11 @@ class VideoProcessor:
             FLANN_INDEX_KDTREE = 1
             index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
             search_params = dict(checks=50)
+            #SIFT-FlannBasedMathcer
             matcher = cv2.FlannBasedMatcher(index_params, search_params)
         elif algo == "ORB":
             detector = cv2.ORB_create()
+            #ORB-BFMatcher
             matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
    
@@ -73,18 +75,18 @@ class VideoProcessor:
         return matched_image
 
     def adjust_frame(self, frame):
-        # 转换到HSV色彩空间
+        # Convert to HSV colour space
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         
-        # 调整亮度和对比度（V通道）
+        # Adjust brightness and contrast (V channel)
         v = hsv[:, :, 2]
-        v = np.clip(v * 1.2, 0, 255).astype(np.uint8)  # 提高亮度
+        v = np.clip(v * 1.2, 0, 255).astype(np.uint8)  # Increase brightness
         hsv[:, :, 2] = v
         
-        # 转换回BGR色彩空间
+        # Convert back to BGR colour space
         adjusted_frame = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
         return adjusted_frame
-
+    #Extract frames from read video
     def extract_frames(self, step=30, apply_blur=False, callback=None):
         try:
             cap = cv2.VideoCapture(self.video_path)
@@ -122,17 +124,20 @@ class VideoProcessor:
 
 
     def crop_panorama(self, pano):
+        # Add a border around the panorama to ensure edge cases are handled correctly
         stitched = cv2.copyMakeBorder(pano, 0, 0, 0, 0, cv2.BORDER_CONSTANT, (0, 0, 0))
+        # Convert the image to grayscale to simplify processing
         gray = cv2.cvtColor(stitched, cv2.COLOR_BGR2GRAY)
+        # Threshold the image to create a binary image where non-black areas are white
         _, thresh = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
-
+        # Find the left top corner by scanning diagonally for the first non-black pixel
         leftTopPt = None
         for i in range(1, thresh.shape[0]):
             pixel = thresh[i, i]
             if pixel != 0:
                 leftTopPt = (i, i)
                 break
-
+        # Find the right top corner by scanning from top-right to bottom-left
         rightTopPt = None
         for i in range(1, thresh.shape[0]):
             x = thresh.shape[1] - i
@@ -141,7 +146,7 @@ class VideoProcessor:
             if pixel != 0:
                 rightTopPt = (x, y)
                 break
-
+        # Find the left bottom corner by scanning from bottom-left to top-right
         leftBottomPt = None
         for i in range(1, thresh.shape[0]):
             x = i
@@ -150,7 +155,7 @@ class VideoProcessor:
             if pixel != 0:
                 leftBottomPt = (x, y)
                 break
-
+        # Find the right bottom corner by scanning from bottom-right to top-left
         rightBottomPt = None
         for i in range(1, thresh.shape[0]):
             x = thresh.shape[1] - i
@@ -159,20 +164,20 @@ class VideoProcessor:
             if pixel != 0:
                 rightBottomPt = (x, y)
                 break
-
+        # Determine the maximum and minimum coordinates to define the bounding box
         topMaxY = max(leftTopPt[1], rightTopPt[1])
         leftMaxX = max(leftTopPt[0], leftBottomPt[0])
         rightMinX = min(rightTopPt[0], rightBottomPt[0])
         bottomMinY = min(leftBottomPt[1], rightBottomPt[1])
-
+        # Use the calculated points to redefine the corners of the cropped area
         leftTopPt = (leftMaxX, topMaxY)
         rightTopPt = (rightMinX, topMaxY)
         leftBottomPt = (leftMaxX, bottomMinY)
         rightBottomPt = (rightMinX, bottomMinY)
-
+        # Crop the panorama based on the bounding box and return it
         tempMat = pano[leftTopPt[1]:rightBottomPt[1], leftTopPt[0]:rightBottomPt[0]]
-
         return tempMat
+
 
 
     def sharpen_frame(self, frame):
@@ -188,20 +193,20 @@ class VideoProcessor:
 
 
 def cv2_to_imgtk(img):
-    """将cv2图像转换为ImageTk图像"""
+    """Convert cv2 images to ImageTk images"""
     img_pil = Image.fromarray(img)
     imgtk = ImageTk.PhotoImage(image=img_pil)
     return imgtk
 
-# GUI部分
+# GUI section
 class PanoramaApp:
     def __init__(self, window, window_title):
         self.window = window
         self.window.title(window_title)
-        self.video_processor = None  # 初始化为 None
-        self.sharpen_enabled = False  # 初始状态为关闭
+        self.video_processor = None  # Initialised to None
+        self.sharpen_enabled = False  # Initial state is off
         
-        # 初始化高斯模糊是否启用的标志
+        # Flag to initialise whether Gaussian blur is enabled or not
         self.blur_enabled = False
         self.setup_gui()
 
@@ -215,7 +220,7 @@ class PanoramaApp:
 
         self.frame = tk.Frame(self.window)
         self.frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
-
+        #Setup Buttons
         self.btn_browse = ttk.Button(self.frame, text="Uploading Videos", command=self.open_video, width=20)
         self.btn_browse.grid(row=1, column=0, padx=10, pady=10)
 
@@ -227,14 +232,14 @@ class PanoramaApp:
 
         self.btn_preview = ttk.Button(self.frame, text="Feature Matching Preview", command=self.preview_video, width=20)
         self.btn_preview.grid(row=4, column=0, padx=10, pady=10)
-        
+        # Add Gaussian Blur checkbox
         self.chk_blur = ttk.Checkbutton(self.frame, text="Enable Gaussian Blur", command=self.toggle_blur)
         self.chk_blur.grid(row=5, column=0, padx=10, pady=10)
-        # 添加锐化复选框
+        # Add sharpening checkbox
         self.chk_sharpen = ttk.Checkbutton(self.frame, text="Enable sharpening", command=self.toggle_sharpen)
         self.chk_sharpen.grid(row=6, column=0, padx=10, pady=10)
         self.algo_var = tk.StringVar()
-        
+        # Add algorithm selection interactions
         self.algo_var.set("SIFT") 
         self.algo_dropdown = ttk.OptionMenu(self.frame, self.algo_var, "SIFT", "SIFT", "ORB")
         self.algo_dropdown.grid(row=7, column=0, padx=10, pady=10)
@@ -247,19 +252,19 @@ class PanoramaApp:
         self.status_label.grid(row=0, column=0, padx=10, pady=10)
 
 
-
         screen_width = self.window.winfo_screenwidth()
         screen_height = self.window.winfo_screenheight()
         center_x = int(screen_width/2 - window_width/2)
         center_y = int(screen_height/2 - window_height/2)
         self.window.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
         self.window.mainloop()
-    
+    #Switch
     def toggle_sharpen(self):
         self.sharpen_enabled = not self.sharpen_enabled
 
     def toggle_blur(self):
         self.blur_enabled = not self.blur_enabled
+    #Feature matching preview
     def preview_video(self):
         if not hasattr(self, 'video_path') or not self.video_path:
             messagebox.showerror("Error", "Please upload a video file first.")
@@ -270,7 +275,7 @@ class PanoramaApp:
             messagebox.showerror("Error", "Unable to open the video file.")
             return
 
-
+        #Switching based on algorithm selection
         algo = self.algo_var.get()
         if algo == "SIFT":
             detector = cv2.SIFT_create()
@@ -315,9 +320,9 @@ class PanoramaApp:
             imgtk = cv2_to_imgtk(cv2.cvtColor(matched_frame, cv2.COLOR_BGR2RGB))
             label.imgtk = imgtk
             label.configure(image=imgtk)
-            label.after(10, update_frame)  # 循环更新帧
+            label.after(10, update_frame)  # Cyclic update frames
 
-        update_frame()  # 启动视频帧更新
+        update_frame()  # Initiate video frame update
 
 
 
@@ -325,14 +330,14 @@ class PanoramaApp:
         help_window = tk.Toplevel(self.window)
         help_window.title("HELP")
 
-        # 创建一个文本框以及滚动条
+        # Create a text box and a scroll bar
         text_scroll = tk.Scrollbar(help_window)
         text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
         help_text = tk.Text(help_window, height=10, width=50, wrap=tk.WORD, yscrollcommand=text_scroll.set, font=("Arial", 12))
         help_text.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
 
-        # 在文本框中插入帮助内容
+        # Insert help content in the text box
         help_content = """
     Uploading Videos: Select the video file to process.
     Generating panoramas: Frames are extracted from the uploaded video and stitched into a panorama.
@@ -342,11 +347,11 @@ class PanoramaApp:
     Selection algorithm: Choose to use SIFT or ORB algorithm for feature detection and matching.
     """
         help_text.insert(tk.END, help_content)
-        help_text.config(state=tk.DISABLED)  # 设置文本框为只读模式
+        help_text.config(state=tk.DISABLED)  # Set the text box to read-only mode
         text_scroll.config(command=help_text.yview)
 
-        # 调整帮助窗口的尺寸和位置
-        help_window.update_idletasks()  # 更新窗口状态以获取正确的尺寸
+        # Resize and reposition the help window
+        help_window.update_idletasks()  # Update the window state to get the correct size
         window_width = help_window.winfo_reqwidth()
         window_height = help_window.winfo_reqheight()
         position_right = self.window.winfo_x() + (self.window.winfo_width() // 2 - window_width // 2)
@@ -356,18 +361,18 @@ class PanoramaApp:
 
 
     def stitch_video_async(self):
-        # 禁用设置修改和按钮
+        # Disable setting modifications and buttons
         self.chk_blur.config(state='disabled')
         self.chk_sharpen.config(state='disabled')
-        self.algo_dropdown.config(state='disabled')  # 禁用算法选择下拉菜单
-        self.btn_stitch.config(state='disabled')  # 禁用生成全景图按钮
-        self.btn_browse.config(state='disabled')  # 禁用上传视频按钮
+        self.algo_dropdown.config(state='disabled')  # Disable algorithm selection drop-down menu
+        self.btn_stitch.config(state='disabled')  # Disable the Generate Panorama button
+        self.btn_browse.config(state='disabled')  # Disable the upload video button
         threading.Thread(target=self.stitch_video).start()
 
     def stitch_video(self):
         if not hasattr(self, 'video_path') or not self.video_path:
             messagebox.showerror("Error", "Please upload a video file first.")
-            self.enable_controls()  # 如果没有视频路径，立即重新启用控件
+            self.enable_controls()  # If there is no video path, re-enable the control immediately
             return
 
         processor = VideoProcessor(self.video_path)
@@ -384,30 +389,30 @@ class PanoramaApp:
         except Exception as e:
             messagebox.showerror("Error", str(e))
         finally:
-            # 无论成功或失败，重新启用控件
+            # Re-enable the control whether it succeeds or fails
             self.enable_controls()
             self.progress['value'] = 0
 
     def enable_controls(self):
-        """重新启用所有的用户界面控件"""
+        """Re-enable all user interface controls"""
         self.chk_blur.config(state='normal')
         self.chk_sharpen.config(state='normal')
-        self.algo_dropdown.config(state='normal')  # 重新启用算法选择下拉菜单
-        self.btn_stitch.config(state='normal')  # 重新启用生成全景图按钮
-        self.btn_browse.config(state='normal')  # 重新启用上传视频按钮
+        self.algo_dropdown.config(state='normal')  # Re-enable the algorithm selection drop-down menu
+        self.btn_stitch.config(state='normal')  # Re-enable the Generate Panorama button
+        self.btn_browse.config(state='normal')  # Re-enable the upload video button
 
     def update_progress(self, frame_idx, total_frames):
         progress = int((frame_idx / total_frames) * 100)
         self.progress['value'] = progress
         self.window.update_idletasks()
-        # 当进度条到达100%时，更新状态信息
+        # Update status information when progress bar reaches 100%
         if progress == 100:
             self.status_label.config(text="Frame extraction complete, please wait for the stitching process.")
 
     def open_video(self):
         self.video_path = filedialog.askopenfilename(filetypes=[("Video files", "*.mp4;*.avi;*.mov")])
         if self.video_path:
-            self.video_processor = VideoProcessor(self.video_path)  # 创建VideoProcessor实例
+            self.video_processor = VideoProcessor(self.video_path)  # Create a VideoProcessor instance
             self.btn_stitch.config(state=tk.NORMAL)
             messagebox.showinfo("Uploading successfully", "The video file has been uploaded successfully and processing can begin.")
         else:
@@ -419,20 +424,20 @@ class PanoramaApp:
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
 
-        # 裁剪全景图
+        # Cropping panoramas
         panorama = self.video_processor.crop_panorama(panorama)
 
-        # 生成当前时间戳
-        timestamp = int(time.time())  # 更新时间戳
+        # Generate current timestamp
+        timestamp = int(time.time())  # Update timestamp
 
-        # 保存裁剪后的全景图
+        # Save the cropped panorama
         file_name = f"panorama_{timestamp}.jpg"
         save_path = os.path.join(save_directory, file_name)
         cv2.imwrite(save_path, panorama)
         print(f"Cropped panorama saved to {save_path}")
         messagebox.showinfo("The panorama was generated successfully", f"The panorama has been successfully saved to：{save_path}")
 
-        # 创建并显示裁剪后的全景图窗口
+        # Create and display the cropped panorama window
         self.create_panorama_window(panorama, save_path)
 
     def create_panorama_window(self, panorama, save_path):
@@ -440,30 +445,30 @@ class PanoramaApp:
         panorama_window.title("Panorama")
         panorama_window.protocol("WM_DELETE_WINDOW", lambda: self.on_close_panorama(panorama_window))
 
-        # 获取屏幕尺寸
+        # Get screen size
         screen_width = self.window.winfo_screenwidth()
         screen_height = self.window.winfo_screenheight()
 
-        # 获取图像尺寸
+        # Get image size
         image_height, image_width, _ = panorama.shape
 
-        # 计算缩放比例，以适应屏幕
+        # Calculate scaling to fit the screen
         scale_width = screen_width / image_width
         scale_height = screen_height / image_height
         scale = min(scale_width, scale_height)
 
-        # 调整图像尺寸
-        if scale < 1:  # 仅当图像比屏幕大时才进行缩放
+        # Resize images
+        if scale < 1:  # Scale only when the image is larger than the screen
             image_width = int(image_width * scale)
             image_height = int(image_height * scale)
             panorama = cv2.resize(panorama, (image_width, image_height), interpolation=cv2.INTER_AREA)
 
         panorama_photo = cv2_to_imgtk(cv2.cvtColor(panorama, cv2.COLOR_BGR2RGB))
         label_panorama = tk.Label(panorama_window, image=panorama_photo)
-        label_panorama.image = panorama_photo  # 保持对图像的引用，避免被垃圾收集器回收
+        label_panorama.image = panorama_photo  # Keep references to images from being reclaimed by the rubbish collector
         label_panorama.pack(fill=tk.BOTH, expand=tk.YES)
 
-        # 设置窗口尺寸和位置，使其居中
+        # Set the window size and position so that it is centred
         center_x = int((screen_width - image_width) / 2)
         center_y = int((screen_height - image_height) / 2)
         panorama_window.geometry(f'{image_width}x{image_height}+{center_x}+{center_y}')
@@ -484,13 +489,13 @@ class PanoramaApp:
 
 
     def on_close_panorama(self, panorama_window):
-        # 销毁全景图窗口
+        # Destroy panorama window
         panorama_window.destroy()
-        # 重新聚焦到主窗口
+        # Refocus on the main window
         self.window.focus_set()
 
-# 主程序开始
+# Main programme start
 if __name__ == '__main__':
-    # 创建窗口并运行
+    # Create a window and run it
     root = tk.Tk()
     app = PanoramaApp(root, "20321406")
