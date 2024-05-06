@@ -25,5 +25,5 @@ This project implements a software system to automatically generate panorama ima
 
 Run the application by executing:
 ```
-python panorama_app.py
+python panorama.py
 ```
